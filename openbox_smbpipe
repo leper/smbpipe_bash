@@ -1,0 +1,60 @@
+#!/bin/sh
+mountpath=/mnt/school
+credentialpath=$XDG_DATA_HOME/smbpipe
+tmppath=/tmp
+tmpfile=openbox_smbpipe_tmp
+age=30   # age of file before refreshing (in minutes)
+
+# getting the serverlist
+if [ "$1" == "" ] ; then
+  # use old serverlist (if not too old)
+  if [ "`find $tmppath -mmin -$age -name $tmpfile`" == "$tmppath/$tmpfile" ] ; then
+    cat $tmppath/$tmpfile
+
+  # get new serverlist
+  else
+    echo '<openbox_pipe_menu>' | tee $tmppath/$tmpfile
+    #get avaliable servers and convert to lower case ( | tr ... )
+    servers=`smbtree -S -N -g | grep '\\\\.' | sed -e 's/\t[\\]*//g' | tr "[:upper:]" "[:lower:]"`
+
+    for server in $servers ; do
+      echo '<menu id="'$server'" label="'$server'" execute="sh '$0' '$server'" />' | tee -a $tmppath/$tmpfile
+    done
+    echo '</openbox_pipe_menu>' | tee -a $tmppath/$tmpfile
+  fi
+
+# get shares for a server
+else
+  echo '<openbox_pipe_menu>'
+
+  server=$1
+  serverip=`nmblookup $server | grep $server'<' | sed -e 's/ [^ ]*$//g'`
+
+  #get all mountable shares of the server (and strip them of comments)
+  shares=`smbclient -L '\\'$server -g --authentication-file=$credentialpath/$server | grep '|'  | sed -e 's/|[^|]*$/|/g'` # | sed -e 's/ /\ /g'`
+
+  # TODO solve problem with spaces in sharenames (partially solved below (\n isn't yet stripped))
+  # TODO add stub for handling different sharetypes (Printer)
+
+#  disks=`echo "$shares" | grep Disk | sed -e 's/^[^|]*|//g' | sed -e 's/^/"/g' -e 's/\n/" "/g' -e 's/$/"/g'` # | tr "\" \"" "\n"`
+##  echo "$shares" > $tmppath'/'$tmpfile'1'
+##  disks=`cat $tmppath'/'$tmpfile'1' | grep Disk | sed -e 's/^[^|]*|//g' | tr " " "\\\ "`
+#disks=`echo "$shares" | sed -e '$!N;s/[^|]\n/ /g'`
+#b=$(echo "$shares" | sed -e '$!N;s/[^|]\n/ /g' | sed -e 's/^/"/g' -e 's/|$/"/g' | sed -e 's/\n$//g') # strip \n of lines not ending with "
+#echo $b;echo "$b"
+#exit
+
+
+  disks=`smbclient -L '\\'$server -g --authentication-file=$credentialpath/$server | grep Disk | sed -e 's/^[^|]*|//g' | sed -e 's/|[^|]*$//g'`
+
+
+  # add all entrys (folders) with a option to mount (will create containing folder)
+  for disk in $disks ; do
+    echo '<item label="Mount '"$disk"'">'
+    echo '<action name="Execute">'
+    echo '<command>urxvt -e sh -c "sudo mkdir '$mountpath'/'$server'/'$disk';sudo mount -t cifs //'$server'/'$disk $mountpath'/'$server'/'$disk' -o ip='$serverip',credentials='$credentialpath'/'$server'"</command>'
+    echo '</action>'
+    echo '</item>'
+  done
+  echo '</openbox_pipe_menu>'
+fi
