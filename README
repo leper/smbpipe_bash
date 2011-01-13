@@ -2,3 +2,6 @@ smbpipe (bash version)
 
 smpipe is an openbox pipe menu for accessing (mounting, listing, etc.) samba shares.
 Shares containing spaces are not handled correctly. This problem is solved in smpipe (Python).
+A solution for the problem with spaces is now present. 
+TODO
+add features already present in python version

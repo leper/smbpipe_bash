@@ -1,4 +1,5 @@
 #!/bin/sh
+IFS="`printf '\n\t'`"
 mountpath=/mnt/school
 credentialpath=$XDG_DATA_HOME/smbpipe
 tmppath=/tmp
@@ -52,7 +53,7 @@ else
   for disk in $disks ; do
     echo '<item label="Mount '"$disk"'">'
     echo '<action name="Execute">'
-    echo '<command>urxvt -e sh -c "sudo mkdir '$mountpath'/'$server'/'$disk';sudo mount -t cifs //'$server'/'$disk $mountpath'/'$server'/'$disk' -o ip='$serverip',credentials='$credentialpath'/'$server'"</command>'
+    echo '<command>urxvt -e sh -c "sudo mkdir \"'$mountpath'/'$server'/'$disk'\";sudo mount -t cifs \"//'$server'/'$disk'\" \"'$mountpath'/'$server'/'$disk'\" -o ip='$serverip',credentials='$credentialpath'/'$server'"</command>'
     echo '</action>'
     echo '</item>'
   done
