@@ -1,9 +1,9 @@
 #!/bin/sh
-IFS="`printf '\n\t'`"
-mountpath=/mnt/school
+IFS="`printf '\n\t'`" # to fix problem with sharenames with spaces
+mountpath=/mnt/samba
 credentialpath=$XDG_DATA_HOME/smbpipe
 tmppath=/tmp
-tmpfile=openbox_smbpipe_tmp
+tmpfile=openbox_smbpipe_bash_tmp # different to the python version for testing purpose only
 age=30   # age of file before refreshing (in minutes)
 
 # getting the serverlist
@@ -25,11 +25,42 @@ if [ "$1" == "" ] ; then
   fi
 
 # get shares for a server
-else
+else if [ "$1" == "--credential-file" ] ; then
+  server=$2
+  username=""
+  if [ $? > 3 && "$3" == "--user" ] ; then
+    username=$4
+  fi
+  if [ $? > 5 && "$5" == "--remove" ] ; then
+    rm -f $credentialpath/server/username
+  else
+    mkdir -p $credentialpath/$server
+    chmod 700 $credentialpath/$server
+    if [ username == "" ] ; then
+      read -p "Username: " username
+    fi
+    read -s -p "Password: " password
+    echo "username="$username > $credentialpath/$server/$username
+    echo "password="$password >> $credentialpath/$server/$username
+    chmod 600 $credentialpath/$server/$username
+  fi
+else if [ "$1" == "--server" ] ; then
   echo '<openbox_pipe_menu>'
 
-  server=$1
+  server=$2
   serverip=`nmblookup $server | grep $server'<' | sed -e 's/ [^ ]*$//g'`
+
+  users=("guest" `ls -Q $credentialpath/$server | sed 's/^.*\//"/'`)
+  for user in ${users[@]} ; do
+    echo "<menu id=\"$server-$user\" label=\"$user\">"
+    #call function getshares (server, serverip, user) # ,filemanager)
+    echo "</menu>"
+  done
+  echo "<item label=\"Create credential file\">"
+  echo "<action name=\"Execute\">"
+  echo "<command>sh $0 --credential-file $server</command>"
+  echo "</action>"
+  echo "</item>"
 
   #get all mountable shares of the server (and strip them of comments)
   shares=`smbclient -L '\\'$server -g --authentication-file=$credentialpath/$server | grep '|'  | sed -e 's/|[^|]*$/|/g'` # | sed -e 's/ /\ /g'`
