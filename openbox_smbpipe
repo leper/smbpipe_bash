@@ -3,7 +3,7 @@ IFS="`printf '\n\t'`" # to fix problem with sharenames with spaces
 mountpath=/mnt/samba
 credentialpath=$XDG_DATA_HOME/smbpipe
 tmppath=/tmp
-tmpfile=openbox_smbpipe_bash_tmp # different to the python version for testing purpose only
+tmpfile=openbox_smbpipe_bash_tmp # different to the python version for testing purpose only ; filename with '1' appended is also used
 age=30   # age of file before refreshing (in minutes)
 
 #server, serverip, user #, filemanager
@@ -11,16 +11,91 @@ function getshares () {
   server=$1
   serverip=$2
   user=$3
+  filemanager=$4
   if [ "$user" == "guest" ] ; then
-    listoption="-U guest -N"
+    listoption="-N -U guest"
     mountoption="guest"
     edituser="" #guest is unchangeable
   else
     listoption="--authentication-file=$credentialpath/$server/$user"
     mountoption="credentials=$credentialpath/$server/$user"
-    edituser="<separator label=\"Edit User\" />"
+    edituser="<separator label=\"Edit User\" />"\
+"<item label=\"Delete $user\">"\
+"<action name=\"Execute\">"\
+"<command>$0 --credential-file $server --user $user --remove</command>"\
+"</action>"\
+"</item>"\
+"<item label=\"Change password\">"\
+"<action name=\"Execute\">"\
+"<command>urxvt -e sh -c \"$0 --credential-file $server --user $user\"</command>"\
+"</action>"\
+"</item>"
   fi
+
+  # get shares
+  #write all to new temporary file
+  #format: Type+=("sharename") (type=Disk,Printer,...)
+  smbclient -L \\$server -g $listoption | grep '|' | sed -e 's/\(.*\)|\(.*\)|.*$/\1+=("\2")/' > $tmppath/$tmpfile"1"
+  # sort values
+  sort $tmppath/$tmpfile"1"
+
+  # source values
+  . $tmppath/$tmpfile"1"
+  rm -f $tmppath/$tmpfile"1"
+
+  # get disks
+  echo "<separator label=\"Mount\" />"
+  for disk in ${Disk[@]} ; do
+    localpath=$mountpath/$server/"$disk"
+    openpath=""
+    if [ "$filemanager" != "" ] ; then
+      openpath=$filemanager" "$localpath
+    fi
+
+    echo "<item label=\"$disk\">"
+    echo "<action name=\"Execute\">"
+    echo "<command>urxvt -e sh -c \"sudo mkdir \\\"$localpath\\\"; sudo mount -t cifs \\\"//$server/$disk\\\" \\\"$localpath\\\" -o ip=$serverip,$mountoption,file_mode=0777,dir_mode=0777,noacl,noperm ; $openpath\"</command>"
+    echo "</action>"
+    echo "</item>"
+  done
+  
+  #get printers
+  echo "<separator label=\"Printer\" />"
+  for printer in ${Printer[@]} ; do
+    echo "<item label=\"$printer\">"
+    echo "<action name=\"Execute\">"
+    #smb://username.password@servername/printer
+    echo "<command>sh -c \"echo \\\"smb://$server/$printer\\\" | xclip\"</command>"
+    echo "</action>"
+    echo "</item>"
+  done
+  #split $shares ... -> disks, printers
+  
+  echo $edituser
 }
+
+filemanager=""
+usefilemanager=""
+if [ "$1" == "--filemanager" ] ; then
+  filemanager=$2
+  usefilemanager="--filemanager "$filemanager
+  shift 2
+fi
+
+if [ $# == 0 ] ; then
+  echo "<openbox_pipe_menu>"
+  echo "<menu id=\"smbpipebash\" label=\"Servers\" execute=\"$0 $usefilemanager --serverlist\" />"
+  echo "<item label=\"Refresh list\">"
+  echo "<action name=\"Execute\">"
+  echo "<command>$0 --refresh</command>"
+  echo "</action>"
+  echo "</item>"
+  echo "</openbox_pipe_menu>"
+fi
+
+if [ "$1" == "--refresh" ] ; then
+  rm -f $tmppath/$tmpfile
+fi
 
 # getting the serverlist
 if [ "$1" == "--serverlist" ] ; then
@@ -35,7 +110,7 @@ if [ "$1" == "--serverlist" ] ; then
     servers=`smbtree -S -N -g | grep '\\\\.' | sed -e 's/\t[\\]*//g' | tr "[:upper:]" "[:lower:]"`
 
     for server in $servers ; do
-      echo '<menu id="'$server'" label="'$server'" execute="sh '$0' '$server'" />' | tee -a $tmppath/$tmpfile
+      echo '<menu id="'$server'" label="'$server'" execute="'$0' '$usefilemanager' --server '$server'" />' | tee -a $tmppath/$tmpfile
     done
     echo '</openbox_pipe_menu>' | tee -a $tmppath/$tmpfile
   fi
@@ -43,15 +118,17 @@ else
   if [ "$1" == "--credential-file" ] ; then
     server=$2
     username=""
-    if [ $? > 3 && "$3" == "--user" ] ; then
+    #if [ $? > 3 && "$3" == "--user" ] ; then
+    if [ $? > 3 ] && [ "$3" == "--user" ] ; then
       username=$4
     fi
-    if [ $? > 5 && "$5" == "--remove" ] ; then
+    #if [ $? > 5 && "$5" == "--remove" ] ; then
+    if [ $? > 5 ] && [ "$5" == "--remove" ] ; then
       rm -f $credentialpath/server/username
     else
       mkdir -p $credentialpath/$server
       chmod 700 $credentialpath/$server
-      if [ username == "" ] ; then
+      if [ "$username" == "" ] ; then
         read -p "Username: " username
       fi
       read -s -p "Password: " password
@@ -66,15 +143,15 @@ else
       server=$2
       serverip=`nmblookup $server | grep $server'<' | sed -e 's/ [^ ]*$//g'`
 
-      users=("guest" `ls -Q $credentialpath/$server | sed 's/^.*\//"/'`)
+      users=("guest" `ls $credentialpath/$server`) 
       for user in ${users[@]} ; do
         echo "<menu id=\"$server-$user\" label=\"$user\">"
-        getshares "$server" "$serverip" "$user" # ,filemanager)
+        getshares "$server" "$serverip" "$user" "$filemanager"
         echo "</menu>"
       done
       echo "<item label=\"Create credential file\">"
       echo "<action name=\"Execute\">"
-      echo "<command>sh $0 --credential-file $server</command>"
+      echo "<command>urxvt -e sh -c \"$0 --credential-file $server\"</command>"
       echo "</action>"
       echo "</item>"
 
